@@ -1,0 +1,233 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>YOLO Stream</title>
+  <style>
+    body {
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      margin: 0;
+      padding: 0;
+      background: linear-gradient(135deg, #1f2937, #111827);
+      color: #f3f4f6;
+    }
+
+    header {
+      padding: 20px;
+      text-align: center;
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(12px);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    }
+
+    h2 {
+      color: #d9534f;
+      margin-top: 30px;
+      font-size: 28px;
+      text-align: center;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 20px auto;
+      padding: 20px;
+    }
+
+    .video-container {
+      position: relative;
+      text-align: center;
+      margin-bottom: 30px;
+      margin: 20px auto;
+      max-width: 1000px;
+    }
+
+    .video-container img,
+    .video-container canvas {
+      border-radius: 16px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+      width: 100%;
+      height: auto;
+      border: 3px solid rgba(255, 255, 255, 0.1);
+      display: block;
+    }
+
+    .video-container canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 24px;
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+
+    .card {
+      background: rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(10px);
+      padding: 20px;
+      border-radius: 16px;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+      text-align: center;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .card:hover {
+      transform: translateY(-6px);
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+    }
+
+    .card h3 {
+      margin-bottom: 12px;
+      font-size: 20px;
+      font-weight: 600;
+      color: #e5e7eb;
+    }
+
+    .card p {
+      font-size: 22px;
+      font-weight: bold;
+    }
+
+    .status-ok {
+      color: #10b981;
+    }
+
+    .status-alert {
+      color: #ef4444;
+    }
+
+    .toast {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: #ef4444;
+      color: white;
+      padding: 14px 22px;
+      border-radius: 10px;
+      font-weight: bold;
+      font-size: 18px;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+      animation: blink 1s infinite;
+      z-index: 9999;
+    }
+
+    @keyframes blink {
+      0%, 50%, 100% { opacity: 1; }
+      25%, 75% { opacity: 0; }
+    }
+
+    footer {
+      margin-top: 40px;
+      text-align: center;
+      color: #9ca3af;
+      font-size: 14px;
+      padding-bottom: 20px;
+    }
+
+    footer a {
+      color: #3b82f6;
+      text-decoration: none;
+    }
+
+    footer a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h2>Real-Time Safety Alerts (Warehouse)</h2>
+    <p>Restricted Area Violation</p>
+  </header>
+
+  <div class="container">
+    <div class="video-container">
+      <!-- <img id="video-stream" src="/video_feed"> -->
+      <canvas id="detection-canvas"></canvas>
+    </div>
+
+    <div class="stats">
+      <div class="card">
+        <h3>👥 Person Count</h3>
+        <p id="personCount">Loading...</p>
+      </div>
+      <div class="card">
+        <h3>🚨 Restricted Area</h3>
+        <p id="violations">Loading...</p>
+      </div>
+    </div>
+  </div>
+
+  <audio id="alert-sound" preload="auto">
+    <source src="{{ url_for('static', filename='alert.mp3') }}" type="audio/mpeg">
+  </audio>
+
+  <script>
+    const evtSource = new EventSource("/alert");
+    const audioEl = document.getElementById("alert-sound");
+    const videoStream = document.getElementById("video-stream");
+    const canvas = document.getElementById("/Objects");
+    const ctx = canvas.getContext("2d");
+
+    // Match canvas size to video size once loaded
+    videoStream.onload = () => {
+      canvas.width = videoStream.naturalWidth;
+      canvas.height = videoStream.naturalHeight;
+    };
+
+    // Correctly draw bounding boxes on the canvas
+    function drawBoxes(images) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (images && images.length > 0) {
+        images.forEach(violation => {
+          const [x1, y1, x2, y2] = violation.bbox;
+          ctx.strokeStyle = violation.alert ? "red" : "green";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.rect(x1, y1, x2 - x1, y2 - y1);
+          ctx.stroke();
+
+          ctx.fillStyle = ctx.strokeStyle;
+          ctx.fillText(`Conf: ${violation.confidence}`, x1, y1 > 10 ? y1 - 5 : y1 + 10);
+        });
+      }
+    }
+
+    // Single EventSource to handle all real-time updates
+    evtSource.onmessage = function (event) {
+      try {
+        const jsondata = JSON.parse(event.data);
+        
+        // Update stats
+        document.getElementById("personCount").innerText = jsondata.person_count;
+        document.getElementById("violations").innerText = jsondata.violations > 0 ? `⚠️ ${jsondata.violations} Person in Zone` : "✅ Clear";
+
+        // Draw bounding boxes based on the 'images' key
+        drawBoxes(jsondata.images);
+        
+        // Handle audio alert and toast
+        if (jsondata.global_alert) {
+            audioEl.currentTime = 0;
+            audioEl.play().catch(err => console.log("Audio play blocked:", err));
+
+            let existingToast = document.querySelector(".toast");
+            if (!existingToast) {
+                const toast = document.createElement("div");
+                toast.className = "toast";
+                toast.innerText = "⚠ Persons are in Restricted Area";
+                document.body.appendChild(toast);
+                
+                setTimeout(() => toast.remove(), 7000);
+            }
+        }
+      } catch (e) {
+        console.error("Failed to parse JSON or update UI:", e);
+      }
+    };
+  </script>
+</body>
+</html>

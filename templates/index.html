@@ -1,0 +1,436 @@
+<!doctype html>
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <title>YOLO Stream</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
+  <style>
+    body {
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      margin: 0;
+      padding: 0;
+      background: linear-gradient(135deg, #1f2937, #111827);
+      color: #f3f4f6;
+    }
+
+    header {
+      padding: 20px;
+      text-align: center;
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(12px);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    }
+
+    h2 {
+      color: #d9534f;
+      margin-top: 30px;
+      font-size: 28px;
+      text-align: center;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 20px auto;
+      padding: 20px;
+    }
+
+    .video-container {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+
+  img {
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    width: 100%;
+    max-width: 1000px;
+    height: auto;
+    border: 3px solid rgba(255, 255, 255, 0.1);
+
+    display: block;       /* Needed for margin auto to work */
+    margin: 20px auto;    /* Center horizontally */
+  }
+
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 24px;
+    }
+
+    .card {
+      background: rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(10px);
+      padding: 20px;
+      border-radius: 16px;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+      text-align: center;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .card:hover {
+      transform: translateY(-6px);
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+    }
+
+    .card h3 {
+      margin-bottom: 12px;
+      font-size: 20px;
+      font-weight: 600;
+      color: #e5e7eb;
+    }
+
+    .card p {
+      font-size: 22px;
+      font-weight: bold;
+    }
+
+    .status-ok {
+      color: #10b981;
+    }
+
+    /* Green */
+    .status-alert {
+      color: #ef4444;
+    }
+
+    /* Red */
+    .toaster {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: #ef4444;
+      color: white;
+      padding: 14px 22px;
+      border-radius: 10px;
+      font-weight: bold;
+      font-size: 18px;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+      animation: blink 1s infinite;
+      z-index: 9999;
+    }
+
+    @keyframes blink {
+
+      0%,
+      50%,
+      100% {
+        opacity: 1;
+      }
+
+      25%,
+      75% {
+        opacity: 0;
+      }
+    }
+
+    footer {
+      margin-top: 40px;
+      text-align: center;
+      color: #9ca3af;
+      font-size: 14px;
+      padding-bottom: 20px;
+    }
+
+    footer a {
+      color: #3b82f6;
+      text-decoration: none;
+    }
+
+    footer a:hover {
+      text-decoration: underline;
+    }
+
+
+
+    /* .video-container {
+    position: relative;
+      }
+
+#video-stream, #detection-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+} */
+  </style>
+</head>
+
+<body>
+  <div class="">
+  <h2>Real-Time Safety Alerts (Warehouse)</h2>
+  <p style="text-align: center;">Restricted Area Violation</p>
+  </div>
+  
+  <div class="row col-md-12">
+    <div class="col-md-10">
+      <img id="stream" src="/video_feed" />
+    </div>
+    
+
+<div class="col-md-2">
+  <iframe src="/list" width="100%" height="800" style="border:none;"></iframe>
+
+</div>
+
+  </div>
+  <div class="stats">
+    <div class="card">
+      <h3>👥 Person Count</h3>
+      <p id="personCount" style="color:white">Loading...</p>
+    </div>
+    <div class="card">
+      <h3>🚨 Restricted Area</h3>
+      <p id="violations" style="color:white">Loading...</p>
+    </div>
+
+
+    <!-- <div class="card">
+      <h3>🚨 Global Alert</h3>
+      <p id="global_alert">Loading...</p>
+    </div> -->
+  </div>
+  <!-- <p><a href="/health">Check Health</a></p> -->
+  <audio id="alert-sound" preload="auto">
+    <source src="{{ url_for('static', filename='alert.mp3') }}" type="audio/mpeg">
+  </audio>
+  <script>
+
+    //testingggg....
+    const evtSource = new EventSource("/alert");
+
+    const audioEl = document.getElementById("alert-sound");
+    evtSource.onmessage = function (event) {
+      var jsondata = JSON.parse(event.data)
+      document.getElementById("personCount").innerText = jsondata.person_count;
+      // document.getElementById("sidecontainer").innerText = jsondata.images;
+      document.getElementById("violations").innerText =
+              jsondata.violations > 0 ? `⚠️${jsondata.violations} Person in Zone` : "✅ Clear";
+              
+      
+      
+      if (jsondata.status === "ALERT") {
+        // Reset and play alert audio
+        audioEl.currentTime = 0;
+        audioEl.play().catch(err => console.log("Audio play blocked:", err));
+
+        // Remove existing toast if any
+        const existingToast = document.querySelector(".toaster");
+        if (existingToast) {
+          existingToast.remove();
+        }
+
+        // Create new toast
+        const toast = document.createElement("div");
+        toast.className = "toaster";
+        toast.innerText = "⚠ Persons are in Restriced Area";
+        document.body.appendChild(toast);
+
+        // Auto remove after 7 seconds
+        setTimeout(() => {
+          toast.remove();
+        }, 500);
+      }
+    };
+    //  async 
+    function updateStats() {
+      try {
+        // Get person count
+        let personData = {};
+
+        fetch("/person_count")
+          .then((res) => res.json())
+          .then((data) => {
+            personData = data;
+            console.log("Person count:", personData.person_count);
+            document.getElementById("personCount").innerText = personData.person_count;
+          })
+          .catch((err) => console.error("Error fetching person count:", err));
+
+          // debugger;
+          fetch("/Objects")
+          .then((res) => res.json())
+          .then((data) => {
+             debugger;
+            personData = data;
+            console.log("Person count:", personData);
+            document.getElementById("sidecontainer").innerText = personData.images;
+          })
+          .catch((err) => console.error("Error fetching person count:", err));
+
+
+
+        // console.log(personData.person_count);
+        // debugger;
+        // // if  (personData.person_count >2){
+        // //   // debugger;
+        // //    const audioEl = document.getElementById("alert-sound");
+
+        // //   // Unlock audio on first user click
+        // //   document.addEventListener("click", () => {
+        // //     audioEl.play().then(() => {
+        // //       audioEl.pause();
+        // //       audioEl.currentTime = 0;
+        // //     }).catch(err => console.log("Autoplay not allowed until user interacts"));
+        // //   }, { once: true });
+
+        // //   const evtSource = new EventSource("/alert");
+
+        // //   evtSource.onmessage = function(event) {
+        // //     if (event.data === "ALERT") {
+        // //       // Reset and play alert audio
+        // //       audioEl.currentTime = 0;
+        // //       audioEl.play().catch(err => console.log("Audio play blocked:", err));
+
+        // //       // Remove existing toast if any
+        // //       const existingToast = document.querySelector(".toast");
+        // //       if (existingToast) {
+        // //         existingToast.remove();
+        // //       }
+
+        // //       // Create new toast
+        // //       const toast = document.createElement("div");
+        // //       toast.className = "toast";
+        // //       toast.innerText = "⚠ Safety Violation Detected: NO-Hardhat ";
+        // //       document.body.appendChild(toast);
+
+        // //       // Auto remove after 7 seconds
+        // //       setTimeout(() => {
+        // //         toast.remove();
+        // //       }, 1000);
+        // //     }
+        // //   };
+        // }
+
+
+
+
+        // Get restricted status
+        fetch("/violations")
+          .then((res) => res.json())
+          .then(data => {
+            if (data.violations > 0) {
+              // debugger;
+              const audioEl = document.getElementById("alert-sound");
+
+              // Unlock audio on first user click
+              document.addEventListener("click", () => {
+                audioEl.play().then(() => {
+                  audioEl.pause();
+                  audioEl.currentTime = 0;
+                }).catch(err => console.log("Autoplay not allowed until user interacts"));
+              }, { once: true });
+
+              // const evtSource = new EventSource("/alert");
+              // console.log(evtSource);
+
+              // evtSource.onmessage = function (event) {
+              //   if (event.data === "ALERT") {
+              //     // Reset and play alert audio
+              //     audioEl.currentTime = 0;
+              //     audioEl.play().catch(err => console.log("Audio play blocked:", err));
+
+              //     // Remove existing toast if any
+              //     const existingToast = document.querySelector(".toast");
+              //     if (existingToast) {
+              //       existingToast.remove();
+              //     }
+
+              //     // Create new toast
+              //     const toast = document.createElement("div");
+              //     toast.className = "toast";
+              //     toast.innerText = "⚠ Persons are in Restriced Area";
+              //     document.body.appendChild(toast);
+
+              //     // Auto remove after 7 seconds
+              //     setTimeout(() => {
+              //       toast.remove();
+              //     }, 500);
+              //   }
+              // };
+            }
+
+
+            document.getElementById("violations").innerText =
+              data.violations > 0 ? `⚠️${data.violations} Person in Zone` : "✅ Clear";
+
+            // document.getElementById("violations").className =
+            //   data.inside ? "status-alert" : "status-ok";
+          })
+          .catch((er) => {
+            console.log('error encountered: ', er)
+          });
+        // const restrictedData = restrictedRes.json();
+
+
+        // if(restrictedData.violations > 0){
+        //   console.log('Voilated ......', restrictedData.violations);
+        // }
+
+
+//         function drawBoxes() {
+//     // Clear the canvas for the new frame
+//     ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+//     if (personData.violations && personData.violations.length > 0) {
+//         // Loop through each detected object
+//         personData.violations.forEach(violation => {
+//             const [x1, y1, x2, y2] = violation.bbox;
+
+//             // Set color based on alert status
+//             ctx.strokeStyle = violation.alert ? "red" : "green";
+//             ctx.lineWidth = 2;
+
+//             // Draw the bounding box
+//             ctx.beginPath();
+//             ctx.rect(x1, y1, x2 - x1, y2 - y1);
+//             ctx.stroke();
+
+//             // Optional: Draw text (e.g., confidence score)
+//             ctx.fillStyle = ctx.strokeStyle;
+//             ctx.fillText(
+//                 `Conf: ${violation.confidence}`,
+//                 x1, y1 > 10 ? y1 - 5 : y1 + 10
+//             );
+//         });
+//     }
+// }
+
+// // Fetch data every 100ms
+// setInterval(() => {
+//     fetch("/Objects")
+//         .then((res) => res.json())
+//         .then((data) => {
+//             personData = data;
+//             personCountElement.innerText = personData.person_count;
+            
+//             // Draw boxes after fetching the new data
+//             drawBoxes();
+//         })
+//         .catch((err) => console.error("Error fetching person data:", err));
+// }, 100);
+
+
+        // global alerts
+        // const global_alert = fetch("/global_alert");
+        // const global_alertData = global_alert.json();
+        // console.log(global_alertData);
+
+        document.getElementById("global_alert").innerText = "✅ Clear";
+
+        // document.getElementById("global_alert").className =
+        //   restrictedData.inside ? "status-alert" : "status-ok";
+      } catch (err) {
+        console.error("Error fetching stats:", err);
+      }
+    }
+
+    // Update stats every 2 seconds
+    // setInterval(updateStats, 1000);
+    // updateStats();
+  </script>
+</body>
+
+</html>

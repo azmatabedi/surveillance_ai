@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/style.css') }}">
+    <title>Login</title>
+</head>
+<body>
+
+    <div class="container">
+        <h2 class="word">Login</h2>
+        
+        <!-- Username/Password Form -->
+        <form action="/login" method="post">
+            <div>{{ msg }}</div>
+            <input class="textbox" type="text" name="username" placeholder="Enter Username" required>
+            <input class="textbox" type="password" name="password" placeholder="Enter Password" required>
+            <button class="btn" type="submit">Login</button>
+        </form>
+
+        <hr style="margin:20px 0;">
+
+        <!-- Face Recognition Login -->
+        <h3 style="text-align:center;">Or</h3>
+        <button id="faceLoginBtn" class="btn" type="button">Login with Face</button>
+        
+        <!-- Hidden video & canvas -->
+        <div style="display:none;">
+            <video id="video" width="320" height="240" autoplay></video>
+            <canvas id="canvas" width="320" height="240"></canvas>
+        </div>
+
+        <p class="bottom">Don't have an account? <a href="/register">Register here</a></p>
+    </div>
+
+    <script>
+        const video = document.getElementById("video");
+        const canvas = document.getElementById("canvas");
+        const faceLoginBtn = document.getElementById("faceLoginBtn");
+
+        // Ask for camera access
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(stream => { video.srcObject = stream; })
+            .catch(err => console.error("Camera error:", err));
+
+        faceLoginBtn.addEventListener("click", () => {
+            const ctx = canvas.getContext("2d");
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const dataURL = canvas.toDataURL("image/png");
+
+            // Send to backend
+            fetch("/login-face", {
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: "image=" + encodeURIComponent(dataURL)
+            })
+            .then(res => {
+                if (res.redirected) {
+                    // Successful login → redirect
+                    window.location.href = res.url;
+                } else {
+                    return res.json();
+                }
+            })
+            .then(data => {
+                if (data && data.status === "error") {
+                    alert(data.msg);
+                }
+            })
+            .catch(err => console.error("Login error:", err));
+        });
+    </script>
+
+</body>
+</html>
