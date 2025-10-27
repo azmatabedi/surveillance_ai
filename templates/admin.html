@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Admin Panel</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: Arial, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+        .header {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        h1 { margin: 0; }
+        h2 { color: #667eea; text-align: center; margin: 20px 0; }
+        video {
+            width: 100%;
+            max-width: 400px;
+            border-radius: 10px;
+            background: #000;
+            display: block;
+            margin: 20px auto;
+        }
+        input {
+            width: 100%;
+            padding: 12px;
+            margin: 10px 0;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            font-size: 14px;
+            border-radius: 8px;
+            cursor: pointer;
+            margin: 5px;
+        }
+          .button-return {
+            background: #b7c4ff;
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            font-size: 14px;
+            border-radius: 8px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background: #764ba2; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        .message {
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            display: none;
+        }
+        .success { background: #d4edda; color: #155724; display: block; }
+        .error { background: #f8d7da; color: #721c24; display: block; }
+        .info { background: #d1ecf1; color: #0c5460; display: block; }
+        .user-item {
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            margin: 10px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .delete-btn { background: #dc3545; }
+        .delete-btn:hover { background: #c82333; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Admin Panel</h1>
+        <a href="/logout"><button>Logout</button></a>
+    </div>
+    
+    <div class="container">
+        <h2>Register New User</h2>
+        <input type="text" id="userName" placeholder="Enter name">
+        <video id="video" autoplay playsinline></video>
+        <canvas id="canvas" style="display:none;"></canvas>
+        <div style="text-align: center;">
+            <button id="captureBtn" onclick="captureAndRegister()">Capture & Register</button>
+            <button class="button-return"  onclick="returnHome()">Return</button>
+        </div>
+        <div id="message" class="message"></div>
+        
+        <div style="margin-top: 40px;">
+            <h2>Registered Users</h2>
+            {% if users %}
+                {% for user in users %}
+                <div class="user-item">
+                    <span>👤 {{ user }}</span>
+                    <button class="delete-btn" onclick="deleteUser('{{ user }}')">Delete</button>
+                </div>
+                {% endfor %}
+            {% else %}
+                <p style="text-align: center; color: #666;">No users yet</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const message = document.getElementById('message');
+        const captureBtn = document.getElementById('captureBtn');
+        const userName = document.getElementById('userName');
+
+        navigator.mediaDevices.getUserMedia({ 
+            video: { 
+                width: { ideal: 640 },
+                height: { ideal: 480 }
+            } 
+        })
+        .then(stream => {
+            video.srcObject = stream;
+            console.log('Camera started');
+        })
+        .catch(err => {
+            console.error('Camera error:', err);
+            message.className = 'message error';
+            message.textContent = 'Camera error: ' + err.message;
+        });
+  function returnHome() {
+    window.location.href = '/';
+}
+      function captureAndRegister() {
+    const name = userName.value.trim();
+    if (!name) {
+        message.className = 'message error';
+        message.textContent = 'Please enter a name!';
+        return;
+    }
+
+ 
+
+    
+    captureBtn.disabled = true;
+    message.className = 'message info';
+    message.textContent = 'Processing...';
+    
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0);
+    
+    // Convert canvas to blob with error handling
+    canvas.toBlob(function(blob) {
+        if (!blob) {
+            message.className = 'message error';
+            message.textContent = 'Failed to capture image. Try again.';
+            captureBtn.disabled = false;
+            return;
+        }
+        
+        const formData = new FormData();
+        formData.append('image', blob, 'face.jpg');
+        formData.append('name', name);
+        
+        fetch('/register_user', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                message.className = 'message success';
+                message.textContent = data.message;
+                userName.value = '';
+                setTimeout(() => location.reload(), 1500);
+            } else {
+                message.className = 'message error';
+                message.textContent = data.message;
+                captureBtn.disabled = false;
+            }
+        })
+        .catch(err => {
+            message.className = 'message error';
+            message.textContent = 'Error: ' + err.message;
+            captureBtn.disabled = false;
+        });
+    }, 'image/jpeg', 0.95);
+}
+        function deleteUser(name) {
+            if (!confirm('Delete user: ' + name + '?')) return;
+            
+            fetch('/delete_user', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({name: name})
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) location.reload();
+                else alert('Error deleting user');
+            });
+        }
+    </script>
+</body>
+</html>

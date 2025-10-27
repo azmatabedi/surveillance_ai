@@ -1,27 +1,142 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/style.css') }}">
     <title>Login</title>
+    <meta charset="UTF-8">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            text-align: center;
+            max-width: 500px;
+        }
+        h1 { color: #333; margin-bottom: 30px; }
+        video {
+            width: 100%;
+            max-width: 400px;
+            border-radius: 10px;
+            background: #000;
+            margin: 20px 0;
+        }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            margin: 10px;
+            transition: 0.3s;
+        }
+        button:hover { background: #764ba2; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        .message {
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 8px;
+            display: none;
+        }
+        .success { background: #d4edda; color: #155724; display: block; }
+        .error { background: #f8d7da; color: #721c24; display: block; }
+        .info { background: #d1ecf1; color: #0c5460; display: block; }
+        a { color: #667eea; text-decoration: none; margin-top: 20px; display: block; }
+    </style>
 </head>
 <body>
-
-    <div class="container">  <!-- Wrapper for form -->
-        <h2 class="word">Detection Login Portal</h2>
-        
-        <form action="/login" method="post">
-            <div>{{ msg }}</div>
-
-            <input class="textbox" type="text" name="username" id ="username" placeholder="Enter Username" required>
-            <input class="textbox" type="password" name="password" id ="password" placeholder="Enter Password" required>
-            
-            <button class="btn" type="submit">Login</button>
-        </form>
-
-        <p class="bottom">Don't have an account? <a href="/register">Register here</a></p>
+    <div class="container">
+        <h1> Face Login</h1>
+        <video id="video" autoplay playsinline></video>
+        <canvas id="canvas" style="display:none;"></canvas>
+        <div>
+            <button id="loginBtn" onclick="captureLogin()">Login with Face</button>
+        </div>
+        <div id="message" class="message"></div>
+        <a href="/admin_login">Admin Panel</a>
     </div>
 
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const message = document.getElementById('message');
+        const loginBtn = document.getElementById('loginBtn');
+
+        // Start camera
+        navigator.mediaDevices.getUserMedia({ 
+            video: { 
+                width: { ideal: 640 },
+                height: { ideal: 480 }
+            } 
+        })
+        .then(stream => {
+            video.srcObject = stream;
+            console.log('Camera started');
+        })
+        .catch(err => {
+            console.error('Camera error:', err);
+            message.className = 'message error';
+            message.textContent = 'Camera error: ' + err.message;
+        });
+
+       function captureLogin() {
+    loginBtn.disabled = true;
+    message.className = 'message info';
+    message.textContent = 'Processing...';
+    
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0);
+    
+    // Convert canvas to blob with error handling
+    canvas.toBlob(function(blob) {
+        if (!blob) {
+            message.className = 'message error';
+            message.textContent = 'Failed to capture image. Try again.';
+            loginBtn.disabled = false;
+            return;
+        }
+        
+        const formData = new FormData();
+        formData.append('image', blob, 'face.jpg');
+        
+        fetch('/login_face', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const userName = data.message.replace('Welcome ', '').replace('!', '').trim();
+                localStorage.setItem('user', userName);
+
+                message.className = 'message success';
+                message.textContent = data.message + ' Redirecting...';
+                setTimeout(() => window.location.href = '/home', 1000);
+            } else {
+                message.className = 'message error';
+                message.textContent = data.message;
+                loginBtn.disabled = false;
+            }
+        })
+        .catch(err => {
+            message.className = 'message error';
+            message.textContent = 'Error: ' + err.message;
+            loginBtn.disabled = false;
+        });
+    }, 'image/jpeg', 0.95);
+}
+    </script>
 </body>
 </html>
